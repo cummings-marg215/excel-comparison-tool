@@ -1,4 +1,3 @@
-
 import re
 from io import BytesIO
 
@@ -23,6 +22,23 @@ CONTROL_ID_PATTERN = re.compile(
     r"\bCORE\s*#?\s*(\d+(?:\.\d+)?)\b",
     re.IGNORECASE
 )
+
+ISE_ID_PATTERN = re.compile(
+    r"^\s*(\d+(?:\.\d+)?)\s*$"
+)
+
+
+def normalize_ise_id(text):
+    if pd.isna(text):
+        return None
+
+    text = str(text).strip()
+    match = ISE_ID_PATTERN.match(text)
+
+    if not match:
+        return None
+
+    return match.group(1)
 
 
 def normalize_control_id(text):
@@ -68,6 +84,29 @@ def clean_words(text):
 
 
 def compare_text(source_text, target_text):
+    # Exact ISE ID handling, e.g. 10.1 vs 10.1
+    source_ise_id = normalize_ise_id(source_text)
+    target_ise_id = normalize_ise_id(target_text)
+
+    if source_ise_id and target_ise_id:
+        if source_ise_id == target_ise_id:
+            return {
+                "Match %": 1,
+                "Matched Terms": source_ise_id,
+                "Missing Terms": "No major missing terms",
+                "Match Quality": "High",
+                "Notes": "Exact ISE ID match."
+            }
+
+        return {
+            "Match %": 0,
+            "Matched Terms": "",
+            "Missing Terms": source_ise_id,
+            "Match Quality": "No Match",
+            "Notes": f"ISE ID mismatch: source={source_ise_id}, target={target_ise_id}."
+        }
+
+    # Exact CORE ID handling, e.g. CORE #1.1 vs CORE 1.1
     source_control_id = normalize_control_id(source_text)
     target_control_id = normalize_control_id(target_text)
 
@@ -89,6 +128,7 @@ def compare_text(source_text, target_text):
             "Notes": f"CORE control ID mismatch: source={source_control_id}, target={target_control_id}."
         }
 
+    # Standard text comparison
     source_words = clean_words(source_text)
     target_words = set(clean_words(target_text))
 
@@ -284,9 +324,14 @@ st.write(
 with st.expander("How the score is calculated", expanded=False):
     st.write(
         """
-        The tool takes the important words from the source text and checks how many appear in the target text.
+        The tool compares the selected source column against the selected target column row by row.
 
-        It:
+        It handles:
+        - exact ISE ID matches, such as 10.1 vs 10.1
+        - exact CORE ID matches, such as CORE #1.1 vs CORE 1.1
+        - text similarity using important word overlap
+
+        For text comparison, it:
         - lowercases the text
         - removes punctuation
         - removes common stopwords
@@ -371,3 +416,4 @@ if run_button:
 
         except Exception as e:
             st.error(f"Error: {e}")
+            
